@@ -1,0 +1,33 @@
+---
+title: "CLASE_01"
+author: "Daniela Risaro"
+date: '2024'
+output: html_document
+---
+
+## Clase 1 de Ciencia de Datos 2 - MPP
+
+
+```{r}
+library(tidyverse)
+library(sf)
+library(ggmap)
+```
+
+```{r}
+areas_verdes <- st_read("data/areas_verdes_urbanas_argentina/areas_verdes_urbanas_argentina.shp",
+                        stringsAsFactors = TRUE,
+                        options = "ENCODING=latin1")
+```
+
+
+```{r}
+summary(areas_verdes)
+```
+
+
+```{r}
+API Key: cebdf63b-1fbd-40ac-af86-fc993f352022
+
+```
+
