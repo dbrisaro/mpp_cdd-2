@@ -1,0 +1,105 @@
+---
+title: "CLASE_02"
+author: "Daniela Risaro"
+date: '2024'
+output: html_document
+---
+
+## Información georeferenciada en repositorios online
+
+```{r}
+
+library(tidyverse)
+library(sf)
+library(ggmap)
+library(osmdata)
+```
+OSdata tiene informacion de todo el mundo y vamos a querer bajar solo un area de interes. Vamos a ponerle como string la query de la busqueda del lugar. La wikide OSData tiene la info necesaria para entender el catalogo: https://wiki.openstreetmap.org/wiki/ES:Objetos_del_mapa 
+
+```{r}
+bbox_comuna10 <- getbb("Comuna 10, Ciudad Autonoma de Buenos Aires, Buenos Aires, Argentina")
+bbox_comuna10
+
+```
+Chequeemos que las coordenadas de la bounding box estan ok
+
+```{r}
+mapa_comuna10 <- get_stadiamap(bbox = bbox_comuna10,
+                              maptype = "stamen_toner_lite",
+                              zoom = 14)
+```
+```{r}
+ggmap(mapa_comuna10)
+
+```
+Ademas del area de la comuna tambien podemos usar los poligonos que las delimitan
+
+```{r}
+
+poligono_comuna10 <- getbb("Comuna 10, Ciudad Autonoma de Buenos Aires, Buenos Aires, Argentina",
+                          format_out = "sf_polygon")
+poligono_comuna10
+
+```
+Podemos hacer la superposicion del area y del poligono para ver como lucen juntos
+
+```{r}
+ggmap(mapa_comuna10) +
+  geom_sf(data = poligono_comuna10, fill = NA, color = "#0077b6", lwd = 1.25, inherit.aes = FALSE) +
+  labs(title = "Comuna 10",
+       subtitle = "Ciudad Autonoma de Buenos Aires",
+       caption = "Fuente: OpenStreetMap.") +
+  theme_void()
+
+
+```
+La informacion disponible de OSM la podemos consultar con dos funciones: available_features() y available_tags()
+Las features nos dan keys y cada key tiene tags
+
+```{r}
+available_features()
+
+```
+
+```{r}
+available_tags('building')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -7,27 +7,331 @@ output: html_document
 
 ## Clase 1 de Ciencia de Datos 2 - MPP
 
+Aca cargamos las bibliotecas que necesitamos. Que las instalamos anteriormente
 
 ```{r}
 library(tidyverse)
 library(sf)
 library(ggmap)
 ```
+Cargamos el shapefile que tiene las areas verdes de argentina. Todas las de argentina
 
 ```{r}
-areas_verdes <- st_read("data/areas_verdes_urbanas_argentina/areas_verdes_urbanas_argentina.shp",
+areas_verdes_arg <- st_read("data/areas_verdes_urbanas_argentina/areas_verdes_urbanas_argentina.shp",
                         stringsAsFactors = TRUE,
                         options = "ENCODING=latin1")
 ```
 
+Hacemos un summary de la variable de areas_verdes 
+```{r}
+summary(areas_verdes_arg)
+```
+Ploteamos las areas verdes de todo el pais
 
 ```{r}
-summary(areas_verdes)
+ggplot() +
+  geom_sf(data = areas_verdes_arg) +
+  theme_minimal()
 ```
+Cargamos un geojson con los barrios de la caba. TODO: ver si sirve con otra jurisdiccion
+
+```{r}
+barrios_caba <- st_read("data/barrios_caba.geojson",
+                   stringsAsFactors = TRUE,
+                   options = "ENCODING=latin1")
+
+summary(barrios_caba)
+
+ggplot() +
+  geom_sf(data = barrios_caba) +
+  geom_sf(data = areas_verdes_arg) +
+  labs(title = "Espacios Verdes Públicos",
+       x = "",
+       y = "") +
+  theme_minimal()
+```
+Usamos la funcion st_crs que Retrieve coordinate reference system from sf or sfc object. En este caso vemos que la length unit es meters y que la proyeccion EPSG es 9001
+
+```{r}
+st_crs(areas_verdes_arg)
+
+```
+
+Chequeamos si el objeto esta en formato lat long. Si este output es FALSE, entonces no esta en lat long y esta en metros. (esta implicancia esta rara, que me importa si es false en latlon quiero que sea TRUE en metros esta funcion es una verga)
+
+st_is_longlat 
+
+Assert whether simple feature coordinates are longlat degrees
 
 
 ```{r}
-API Key: cebdf63b-1fbd-40ac-af86-fc993f352022
+st_crs(areas_verdes_arg) %>%
+  st_is_longlat()
+```
+Ahora vemos cual es la proyeccion de barrios_caba. Esta en degrees y en la proyeccion EPSG 4326
+
+```{r}
+st_crs(barrios_caba)
+```
+Vamos a pasar la capa de barrios a metros
+
+```{r}
+barrios_caba_proyectados <- st_transform(barrios_caba, crs=st_crs(areas_verdes_arg))
+
+summary(barrios_caba_proyectados)
+```
+
+Necesitamos filtrar la capa de areas verdes con la capa de barrios_caba_proyectados. De esta forma pasamos del shapefile grande de Arg con la capa mas pequeña en barrios caba. La funcion st_filter nos ayuda
+
+```{r}
+areas_verdes_caba <- st_filter(areas_verdes_arg, barrios_caba_proyectados)
 
 ```
+
+A ver como queda ese mapitaaaaa
+
+```{r}
+ggplot() +
+  geom_sf(data = barrios_caba_proyectados, fill = "#fefae0") +
+  geom_sf(data = areas_verdes_caba,
+          fill = "#588157",
+          color = "#588157") +
+  labs(title = "Áreas Verdes",
+       subtitle = "CABA",
+       x = "",
+       y = "") +
+  theme_minimal()
+```
+Ya hicimos el filtrado espacial, ahora lo que queremos es poder hacer un buffer alrededor de todas las areas verdes de caba. Usamos la funcion st_buffer. Vamos a hacer un buffer de puntos que es el que viene por default en la funcion
+
+```{r}
+areas_verdes_caba_buffer_500m <- st_buffer(areas_verdes_caba, dist = 500)
+```
+
+Vemos el mapa con el buffer
+
+```{r}
+ggplot() +
+  geom_sf(data = barrios_caba_proyectados, fill = "#fefae0") +
+  geom_sf(data = areas_verdes_caba_buffer_500m, alpha = 0.75) +
+  geom_sf(data = areas_verdes_caba, fill = "#588157", color = "#588157") +
+  labs(title = "Áreas Verdes - Influencia 500m",
+       subtitle = "CABA",
+       x = "",
+       y = "") +
+  theme_minimal()
+
+```
+Tenemos muchos poligonos qeu en algun caso se superponene. Entpnces hagamos una unica capa. 
+
+```{r}
+
+areas_verdes_caba_buffer_500m <- areas_verdes_caba_buffer_500m %>%
+  summarise(geometry = st_union(geometry))
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = barrios_caba_proyectados, fill = "#fefae0") +
+  geom_sf(data = areas_verdes_caba_buffer_500m, alpha = 0.75) +
+  geom_sf(data = areas_verdes_caba, fill = "#588157", color = "#588157") +
+  labs(title = "Áreas Verdes - Influencia 500m",
+       subtitle = "CABA",
+       x = "",
+       y = "") +
+  theme_minimal()
+```
+Vamos a usar ahora la funcion st_intersection. Porqeu lo que queremos es ver que parte de la CABA esta alterada o cubierta por estas zonas verdes + sus buffers. Entonces lo que tenemos que hacer es intersectar el objeto barrios_caba_proyectados junto con areas_verdes_caba_buffer_500m
+
+
+```{r}
+barrios_caba_proyectados_verdes <- st_intersection(barrios_caba_proyectados, areas_verdes_caba_buffer_500m)
+
+```
+```{r}
+ggplot() +
+  geom_sf(data = barrios_caba_proyectados_verdes, fill="#fefae0") +
+  geom_sf(data = areas_verdes_caba, fill="#588157", color = "#588157") +
+  labs(title = "Áreas Verdes - Influencia 500m",
+       subtitle = "CABA",
+       x = "",
+       y = "") +
+  theme_minimal()
+```
+
+Ahora podemos calcular el area que tienen los barrios de la caba afectados por las areas verdes y su buffer. Para eso usamos una funcion de st_area()
+
+
+```{r}
+
+barrios_caba_proyectados_verdes <- barrios_caba_proyectados_verdes %>%
+  mutate(sup_acceso=round(as.integer(st_area(geometry))/1000000, 2),
+         sup_sin_acceso=sup_km2-sup_acceso,
+         pct_acceso=sup_acceso/sup_km2)
+
+```
+
+Vamos a ver que ocurre con el porcentaje de acceso a las areas verdes de cada barrio de la CABA
+
+```{r}
+
+summary(barrios_caba_proyectados_verdes)
+
+```
+Ahora hacemos la cuenta para toda la CABA
+
+```{r}
+summarise(barrios_caba_proyectados_verdes,
+          sup_km2 = sum(sup_km2),
+          sup_acceso = sum(sup_acceso),
+          sup_sin_acceso = sum(sup_sin_acceso),
+          pct_acceso = round(sup_acceso/sup_km2*100, 2))
+```
+
+Bueno muy bonito, veamos cuanto porcentaje de la caba tiene acceso a esos buffers. En terminos de su area
+```{r}
+pct_caba_acceso_verde <- sum(barrios_caba_proyectados_verdes$sup_acceso) / sum(barrios_caba_proyectados_verdes$sup_km2) * 100
+
+pct_caba_acceso_verde
+```
+Ahora lo vamos a ver en terminos de su poblacion. Tengo entendido que este shapefile es el de la CABA nada mas. Nos va a interesar el field de TOTAL_POB
+
+
+```{r}
+censo2010 <- st_read("data/informacion-censal-por-radio-2010/informacion_censal_por_radio_2010_wgs84.shp")
+
+```
+
+```{r}
+summary(censo2010)
+```
+```{r}
+summarise(censo2010, TOTAL_POB=sum(TOTAL_POB))
+
+```
+El total de la poblacion en la CABA en 2010 es 2.890.151
+```{r}
+ggplot() +
+  geom_sf(data = censo2010, fill = "#fefae0") +
+  geom_sf(data = areas_verdes_caba_buffer_500m, alpha = 0.75) +
+  geom_sf(data = areas_verdes_caba, fill = "#588157", color = "#588157") +
+  labs(title  = "Áreas Verdes - Influencia 500m",
+       subtitle = "CABA",
+       x = "",
+       y = "") +
+  theme_void()
+```
+
+Bueno bueno bueno muy lindo todos los poligonitos. Entiendo que son los radios censales que es la unidad mas chica del censo. ahora lo que queremos es hacer la interseccion de los radios censales con los poligonos buffereados de las areas verdes
+
+
+Deberian tener la misma proyeccion
+
+```{r}
+st_crs(censo2010) == st_crs(areas_verdes_caba)
+
+```
+NO LA TIENEN
+
+Entonces, proyectemosla y luego hacemos la interseccion
+
+```{r}
+censo2010_proyectado <- st_transform(censo2010, crs=st_crs(areas_verdes_caba))
+
+censo2010_intersection <- st_intersection(censo2010_proyectado, areas_verdes_caba_buffer_500m)
+
+```
+```{r}
+ggplot() +
+  geom_sf(data = censo2010_intersection, fill = "#fefae0") +
+  geom_sf(data = areas_verdes_caba, fill = "#588157", color = "#588157") +
+  labs(title = "Áreas Verdes - Influencia 500m",
+       subtitle = "CABA",
+       x = "",
+       y = "") +
+  theme_void()
+```
+Bueno  perfecto entonces tenemos que hacer la suma de la gente que vive en estos poligonitos que se intersectan con los buffers de las areas verdes
+
+```{r}
+summarise(censo2010_intersection, TOTAL_POB = sum(TOTAL_POB))
+
+```
+
+```{r}
+pct_caba_acceso_verde_pobl <- sum(censo2010_intersection$TOTAL_POB) / sum(censo2010$TOTAL_POB) * 100
+pct_caba_acceso_verde_pobl
+```
+
+2749825 es la cantidad de habitantes que viven en los radios censales a menos de 500 metros de un area verde. Es un 95.1%
+
+
+## Vamos a agregar un mapa base
+
+```{r}
+bbox_caba <- st_bbox(barrios_caba)
+bbox_caba <- as.numeric(bbox_caba)
+
+bbox_caba
+
+
+```
+
+```{r}
+register_stadiamaps("cebdf63b-1fbd-40ac-af86-fc993f352022", write = TRUE)
+
+```
+
+Vamos a buscar el mapa base
+
+```{r}
+mapa_caba <- get_stadiamap(bbox = bbox_caba,
+                           maptype = "stamen_toner_lite",
+                           zoom = 13) #El zoom hace referencia a la definición del mapa.
+```
+```{r}
+ggmap(mapa_caba)
+
+```
+```{r}
+ggmap(mapa_caba) +
+  geom_sf(data = censo2010_intersection %>% st_transform(4326),
+          fill = "#fefae0",
+          alpha = 0.5,
+          inherit.aes = FALSE) +
+  geom_sf(data = areas_verdes_caba %>% st_transform(4326),
+          fill = "#588157",
+          color = "#588157",
+          inherit.aes = FALSE) +
+  labs(title = "Radios censales a 500m o menos de espacios verdes",
+       subtitle = "CABA",
+       color = "") +
+  theme_minimal()
+
+```
+```{r}
+# Crea el gráfico
+mi_grafico <- ggmap(mapa_caba) +
+  geom_sf(data = censo2010_intersection %>% st_transform(4326),
+          fill = "#fefae0",
+          alpha = 0.5,
+          inherit.aes = FALSE) +
+  geom_sf(data = areas_verdes_caba %>% st_transform(4326),
+          fill = "#588157",
+          color = "#588157",
+          inherit.aes = FALSE) +
+  labs(title = "Radios censales a 500m o menos de espacios verdes",
+       subtitle = "CABA",
+       color = "") +
+  theme_minimal()
+
+# Guarda el gráfico como una imagen de alta resolución
+ggsave("figs/mapa_caba_alta_resolucion.png",
+       plot = mi_grafico,
+       dpi = 400,         # Resolución en ppp (píxeles por pulgada)®
+       width = 10,        # Ancho en pulgadas
+       height = 8)        # Altura en pulgadas
+
+```
+
 
