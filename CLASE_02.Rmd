@@ -5,101 +5,251 @@ date: '2024'
 output: html_document
 ---
 
-## Información georeferenciada en repositorios online
+# Información georeferenciada en repositorios online
+
+Vamos a buscar data de repositorios online, sobretodo usaremos Open Street Map (OSM)
 
 ```{r}
+# Cargamos las libraries
 
 library(tidyverse)
 library(sf)
 library(ggmap)
 library(osmdata)
 ```
-OSdata tiene informacion de todo el mundo y vamos a querer bajar solo un area de interes. Vamos a ponerle como string la query de la busqueda del lugar. La wikide OSData tiene la info necesaria para entender el catalogo: https://wiki.openstreetmap.org/wiki/ES:Objetos_del_mapa 
+
+OSM tiene informacion de todo el mundo y vamos a querer bajar solo un área de interés. Vamos a ponerle como string la query de la búsqueda del lugar. 
+
+La wiki de OSM tiene la info necesaria para entender el catálogo: https://wiki.openstreetmap.org/wiki/ES:Objetos_del_mapa 
 
 ```{r}
-bbox_comuna10 <- getbb("Comuna 10, Ciudad Autonoma de Buenos Aires, Buenos Aires, Argentina")
-bbox_comuna10
+# Obtenemos la bounding box del área de interes
 
+bbox_aoi <- getbb("Comuna 10, Ciudad Autonoma de Buenos Aires, Buenos Aires, Argentina")
+bbox_aoi
 ```
-Chequeemos que las coordenadas de la bounding box estan ok
+Chequeemos que las coordenadas de la bounding box estan ok haciendo un mapa y viendo que sea la zona del mundo que nos interesa, no sea cosa que estemos en otro hemisferio porejemplo. Podría pasar, se imaginan? 
 
 ```{r}
-mapa_comuna10 <- get_stadiamap(bbox = bbox_comuna10,
+
+register_stadiamaps("cebdf63b-1fbd-40ac-af86-fc993f352022", write = TRUE)
+
+mapa_aoi <- get_stadiamap(bbox = bbox_aoi,
                               maptype = "stamen_toner_lite",
                               zoom = 14)
-```
-```{r}
-ggmap(mapa_comuna10)
+ggmap(mapa_aoi)
 
 ```
+
 Ademas del area de la comuna tambien podemos usar los poligonos que las delimitan
 
 ```{r}
 
-poligono_comuna10 <- getbb("Comuna 10, Ciudad Autonoma de Buenos Aires, Buenos Aires, Argentina",
+poligono_aoi <- getbb("Comuna 10, Ciudad Autonoma de Buenos Aires, Buenos Aires, Argentina",
                           format_out = "sf_polygon")
-poligono_comuna10
 
 ```
 Podemos hacer la superposicion del area y del poligono para ver como lucen juntos
 
 ```{r}
-ggmap(mapa_comuna10) +
-  geom_sf(data = poligono_comuna10, fill = NA, color = "#0077b6", lwd = 1.25, inherit.aes = FALSE) +
+ggmap(mapa_aoi) +
+  geom_sf(data = poligono_aoi, fill = NA, color = "#0077b6", lwd = 1.25, inherit.aes = FALSE) +
   labs(title = "Comuna 10",
        subtitle = "Ciudad Autonoma de Buenos Aires",
        caption = "Fuente: OpenStreetMap.") +
   theme_void()
 
-
 ```
-La informacion disponible de OSM la podemos consultar con dos funciones: available_features() y available_tags()
+
+## How to get information from OSM?
+
+La informacion disponible de OSM la podemos consultar con dos funciones: ```available_features()``` y ```available_tags()```
 Las features nos dan keys y cada key tiene tags
 
 ```{r}
-available_features()
+all_features <- available_features()
 
+print(all_features[1:10])
 ```
 
 ```{r}
 available_tags('building')
 ```
 
+Como opciones podemos descargar lineas, puntos o poligonos (y multipolígonos). Vamos de a uno?
 
 
+### Puntos!
+
+Vamos a descargar algunos puntos en particular de las churchs
+
+```{r}
+churchs_aoi <- opq(bbox_aoi)
+churchs_aoi <- add_osm_feature(churchs_aoi,
+                                       key = "building",
+                                       value = c("building", "church"))
+
+churchs_aoi <- osmdata_sf(churchs_aoi)
+churchs_aoi
+```
+
+Me quedo con los puntos. Me podria quedar con los poligonos tambien haciendo ```osm_polygons```
+```{r}
+churchs_aoi <- churchs_aoi$osm_points
+
+```
+
+A ver cuantos puntos tenemos: 
+
+```{r}
+dim(churchs_aoi)
+
+```
+
+126 puntos!
+
+```{r}
+ggmap(mapa_aoi) +
+  geom_sf(data = churchs_aoi, inherit.aes = FALSE) +
+  geom_sf(data = poligono_aoi, fill = NA, color = "#0077b6", lwd = 0.75, inherit.aes = FALSE) +
+  labs(title = "Edificios religiosos - iglesias",
+       subtitle = "Comuna 10, Ciudad Autonoma de Buenos Aires",
+       caption = "Fuente: OpenStreetMap") +
+  theme_void() +
+  theme(title = element_text(size = 8, face = "bold"), #tamaño de titulo del mapa
+        plot.caption = element_text(face = "italic", colour = "gray35", size = 7)) #tamaño de nota al pie
+```
+
+Vamos a ver exactamente cuantas churchs entran en la comuna 10. Para eso vamos a usar la ```st_intersection()```
+
+```{r}
+
+churchs_aoi <- st_intersection(churchs_aoi, poligono_aoi)
+
+dim(churchs_aoi)
+
+```
+
+son sesentayocho. che me parece UN MONTON. Y por qué hay puntos tan contiguos en el mapa? Pues no lo se, pero habría que ver qué entiende OSM por _church_
+
+### Lineas, lineas lineas,
+
+Tambien podemos descargar lineas del area of interest. 
+
+```{r}
+calles_aoi <- opq(bbox_aoi)
+
+calles_aoi <- add_osm_feature(calles_aoi,
+                                  key = "highway",
+                                  value = c("motorway", "trunk", "primary", "secondary", "tertiary"))
+
+calles_aoi <- osmdata_sf(calles_aoi)
+calles_aoi
+
+```
+Nos quedamos con las _lines_ 
+
+```{r}
+calles_aoi <- calles_aoi$osm_lines
+```
+
+```{r}
+ggmap(mapa_aoi) +
+  geom_sf(data = calles_aoi, color = "#2b2d42", inherit.aes = FALSE, lwd = 0.7) +
+  geom_sf(data = poligono_aoi, fill = NA, color = "#0077b6", lwd = 0.75, inherit.aes = FALSE) +
+  labs(title = "Calles principales",
+       subtitle = "Comuna 10, Ciudad Autonoma de Buenos Aires",
+       caption = "Fuente: OpenStreetMap") +
+  theme_void() +
+  theme(title = element_text(size = 8, face = "bold"), #tamaño de titulo del mapa
+        plot.caption = element_text(face = "italic", colour = "gray35", size = 7)) #tamaño de nota al pie
+```
+
+### Por último, polígonos.
+
+Para finalizar vamos a hacer una query de poligonos (overpass query, remember). Acá me anoto una tarea que es ver bien el tema de los tags porque no los entiendo del todo: en los values estan concatenadas diferentes keys o hay una adentro de la otra?
+
+```{r}
+parques_aoi <- opq(bbox_aoi)
+
+parques_aoi <- add_osm_feature(parques_aoi,
+                                   key = "leisure",
+                                   value = c("park", "garden", "nature_reserve"))
+
+parques_aoi <- osmdata_sf(parques_aoi)
+parques_aoi
+
+```
+Ahora vamos a tomar los poligonos y multipoligonos de este objeto
+
+```{r}
+parques_polygons <- parques_aoi$osm_polygons
+parques_multipolygons <- parques_aoi$osm_multipolygons
+
+dim(parques_polygons)
+
+```
+
+```{r}
+ggmap(mapa_aoi) +
+  geom_sf(data = parques_polygons, fill = "#588157", color = NA, inherit.aes = FALSE) +
+  geom_sf(data = parques_multipolygons, fill = "#588157", color = NA, inherit.aes = FALSE) +
+  geom_sf(data = poligono_aoi, fill = NA, color = "#0077b6", lwd = 0.75, inherit.aes = FALSE) +
+  labs(title = "Espacios verdes",
+       subtitle = "Comuna 10, Ciudad Autonoma de Buenos Aires",
+       caption = "Fuente: OpenStreetMap") +
+  theme_void()
+```
+
+Tenemos dos elementos que son los poligonos y los multipoligonos y queremos que sea una sola! Para eso vamos a seleccionar by the id and then we will bind them together oh yeah
+
+```{r}
+parques_polygons <- parques_polygons %>%
+  select(osm_id, name)
+parques_multipolygons <- parques_multipolygons %>%
+  select(osm_id, name)
+parques_aoi <- rbind(parques_polygons, parques_multipolygons)
+```
 
 
+Ahora intersectamos el poligono de la comuna de interes con los poligonos de los parques verdes
+
+```{r}
+parques_aoi <- st_intersection(parques_aoi, poligono_aoi)
+
+```
 
 
+```{r}
+ggmap(mapa_aoi) +
+  geom_sf(data = parques_aoi, fill = "#588157", color  =NA, inherit.aes = FALSE) +
+  geom_sf(data = poligono_aoi, fill = NA, color = "#0077b6", lwd = 0.75, inherit.aes = FALSE) +
+  labs(title = "Espacios verdes",
+       subtitle = "Comuna 10, Ciudad Autonoma de Buenos Aires",
+       caption = "Fuente: OpenStreetMap") +
+  theme_void() +
+  theme(title = element_text(size = 8, face = "bold"), #tamaño de titulo del mapa
+        plot.caption = element_text(face = "italic", colour = "gray35", size = 7)) #tamaño de nota al pie
+```
+
+jajajaja me quedan los parques on top de los names pero ya fue
 
 
+Vamos a calcular la superficie de las áreas verdes
 
+```{r}
+parques_aoi <- parques_aoi %>%
+  mutate(area_m2 = st_area(parques_aoi))
 
+summary(parques_aoi$area_m2)
+```
 
+El area promedio de los espacios verdes en la comuna 10 es de 2600 m2 creo yo que es muy poco poquisimo, terrible mala performance
 
+```{r}
+summarise(parques_aoi, area_m2 = sum(area_m2))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```
+El área total de los parques es de 210979 m2, 0.2 km2 
 
 
